@@ -26,12 +26,16 @@ auto listen_to_rfcomm(const stream_handle_t &handle, uint8_t channel) -> void
 {
   int sock = socket(AF_BLUETOOTH, SOCK_STREAM, BTPROTO_RFCOMM);
   if (sock < 0) {
-    throw std::runtime_error(std::strerror(errno));
+    const std::string error = std::strerror(errno);
+    spdlog::error(error);
+    throw std::runtime_error(error);
   }
   const bdaddr_t bdaddr_any{ { 0, 0, 0, 0, 0, 0 } };
   sockaddr_rc addr_local{ AF_BLUETOOTH, bdaddr_any, channel };
   if (bind(sock, reinterpret_cast<sockaddr *>(&addr_local), sizeof(addr_local)) < 0) {
-    throw std::runtime_error(std::strerror(errno));
+    const std::string error = std::strerror(errno);
+    spdlog::error(error);
+    throw std::runtime_error(error);
   }
   const int queue_size{ 0 };
   listen(sock, queue_size);
