@@ -5,7 +5,7 @@
 #include <utility>
 
 namespace core {
-  using clock_t = std::chrono::high_resolution_clock;
+  using clock_t = std::chrono::steady_clock;
   using time_point_t = std::chrono::time_point<clock_t>;
   using addr_t = uint8_t;
 
