@@ -47,8 +47,8 @@ auto parse_program(const std::string &program) -> std::vector<motion_statement>
       const auto angle = std::stof(angle_base->str());
 
       try {
-        const auto addr = servo_addr_map.at(name);
-        result.push_back({addr, angle, time_offset});
+        result.push_back({name, angle, time_offset});
+        spdlog::debug("Parsed {}: {} -> {}", time, name, angle);
       } catch (std::out_of_range &e) {
         throw syntax_error{};
       }
@@ -56,6 +56,23 @@ auto parse_program(const std::string &program) -> std::vector<motion_statement>
   }
 
   return result;
+}
+auto to_motion(const motion_statement &statement, time_point_t start_time) -> servo_motion
+{
+  const auto params = servo_param_map.at(statement.name);
+  const auto addr = params.addr;
+  const auto angle_range = params.angle_range;
+  const auto angle = std::clamp(statement.angle, angle_range.first, angle_range.second);
+  const auto angle_span = angle_range.second - angle_range.first;
+  const auto hw_angle_span = hw_angle_range.second - hw_angle_range.first;
+  const auto hw_angle = static_cast<hw_angle_t>(angle/angle_span*hw_angle_span + hw_angle_range.first);
+  const auto time = start_time + statement.time_offset;
+  const auto motion = servo_motion {
+    addr,
+    hw_angle,
+    time,
+  };
+  return motion;
 }
 
 }// namespace core

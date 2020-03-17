@@ -11,6 +11,8 @@ using stream_handle_t = std::function<void(std::istream &is, std::ostream &os)>;
 
 auto listen_to_rfcomm(const stream_handle_t &handle, uint8_t channel) -> void;
 
+auto listen_to_stdin(const stream_handle_t &handle) -> void;
+
 }// namespace core
 
 #endif//FOSSBOT_CORE_RFCOMM_H

@@ -7,6 +7,7 @@
 #include <thread>
 #include <atomic>
 #include <condition_variable>
+#include <algorithm>
 
 #include <spdlog/spdlog.h>
 #include <docopt/docopt.h>
@@ -14,6 +15,7 @@
 #include "rfcomm.h"
 #include "servo.h"
 #include "parse.h"
+#include "concurrent_queue.h"
 
 static constexpr auto USAGE =
   R"(FOSSBot Core.
@@ -31,76 +33,66 @@ static constexpr auto USAGE =
 auto parse_args(int argc, char **argv) -> std::tuple<uint8_t>;
 auto set_verbosity(long level) -> void;
 
-enum class net_state { start, program };
+template<typename Q>
+auto network_worker(uint8_t channel, Q &queue, std::atomic<bool> &done) -> void;
 
 auto main(int argc, char **argv) -> int
 {
   const auto [channel] = parse_args(argc, argv);
+  auto servo_file = std::ofstream("dev_custom_leds", std::ios::out | std::ios::binary);
 
-  auto rfcomm_handle = [](std::istream &is, std::ostream &os) -> bool {
-    auto state = net_state::start;
-    auto buffer = std::string{};
-    for (std::string line; std::getline(is, line);) {
-      spdlog::debug("In: {}", line);
-      switch (state) {
-      case net_state::start:
-        if (line == "begin") {
-          state = net_state::program;
-        }
-        break;
-      case net_state::program:
-          if (line == "end") {
-            state = net_state::start;
-            try {
-              auto program = core::parse_program(buffer);
-              spdlog::info("Program:");
-              for (auto &s : program) {
-                spdlog::info("{}: {:#04x} -> {}", s.time_offset.count(), s.addr, s.angle);
-              }
-            } catch (core::syntax_error &e) {
-              spdlog::warn("Syntax error");
-              os << "syntax error\n";
-              os.flush();
-            }
-          }
-          buffer.append(line + "\n");
-        break;
-      }
-    }
-    return true;
-  };
-  auto network_thread = std::thread(core::listen_to_rfcomm, rfcomm_handle, channel);
-//
-//  auto servo_file = std::ofstream("dev_custom_leds", std::ios::out | std::ios::binary);
-//
-//  auto angle_change_comp = [](const core::servo_motion &l, const core::servo_motion &r) { return l.time > r.time; };
-//  std::priority_queue<core::servo_motion, std::vector<core::servo_motion>, decltype(angle_change_comp)>
-//    change_queue(angle_change_comp);
-//
-//  auto now = core::clock_t::now();
-//  for (uint8_t i = 0; i < 10; i++) {
-//    change_queue.push(core::servo_motion{ i, static_cast<uint8_t>(i * 0x10 + 0x0F), now + std::chrono::seconds(i) });
-//  }
-//
-//  while (!change_queue.empty()) {
-//    auto change = change_queue.top();
-//    change_queue.pop();
-//    std::this_thread::sleep_until(change.time);
-//    core::write_change(servo_file, change);
-//  }
+  const auto motion_time_comp = [](const core::servo_motion &l, const core::servo_motion &r) { return l.time > r.time; };
+  auto done = std::atomic<bool>{false};
+  auto motion_queue = nonstd::concurrent_queue<core::servo_motion, std::priority_queue<core::servo_motion, std::vector<core::servo_motion>, decltype(motion_time_comp)>>(motion_time_comp);
+  auto network_thread = std::thread(network_worker<decltype(motion_queue)>, channel, std::ref(motion_queue), std::ref(done));
+
+  while (!done.load()) {
+    const auto motion = motion_queue.wait_pop(); // could be too slow
+    std::this_thread::sleep_until(motion.time);
+    spdlog::debug("Doing {:#04x} -> {:#04x}", motion.addr, motion.angle);
+  }
 
   network_thread.join();
 }
 
-//auto network_handle(uint8_t channel, std::queue<core::servo_motion> &queue, std::condition_variable &cv, std::mutex &m, std::atomic<bool> &done) -> void
-//{
-//  auto handle = [&](std::istream &is, std::ostream &os){
-//    while(!done.load())
-//    {
-//      std::unique_lock lock(m);
-//    }
-//  };
-//}
+template<typename Q>
+auto network_worker(uint8_t channel, Q &queue, std::atomic<bool> &done) -> void
+{
+  const auto push_program = [&queue](const std::string &program) {
+    const auto statements = core::parse_program(program);
+    auto motions = std::vector<core::servo_motion>{};
+    motions.reserve(statements.size());
+    const auto time = core::clock_t::now();
+    for (const auto &statement : statements) {
+      motions.push_back({
+        core::to_motion(statement, time)
+      });
+    }
+    // could be too slow if locking each time
+    for (const auto &motion : motions) {
+      queue.push(motion);
+    }
+    spdlog::debug("Pushed {} motions", motions.size());
+  };
+
+  const auto handle = [&done, &push_program](std::istream &is, std::ostream &os) {
+    // TODO: make proper protocol
+    auto strbuf = std::string{};
+    for (std::string line; std::getline(is, line) or !done.load();) {
+      if (line == "push") {
+        spdlog::debug("Buffer with size {} pushed", strbuf.size());
+        push_program(strbuf);
+        os << "pushed\n";
+        os.flush();
+        strbuf.clear();
+      } else {
+        strbuf.append(line + "\n");
+      }
+    }
+  };
+  spdlog::debug("Using channel {}", channel);
+  core::listen_to_stdin(handle);
+}
 
 auto parse_args(int argc, char **argv) -> std::tuple<uint8_t>
 {
