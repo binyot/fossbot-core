@@ -11,11 +11,18 @@ $ cmake ..
 
 After this you can run ```ccmake .``` to configure this build.
 
+To build just the core, run
+```
+$ make core
+```
+
+Binaries should be in the ```bin/core``` path of your ```build``` directory.
+
 ## Running
 
 Example usage:
 ```
-$ bin/core -vvv --channel 1
+$ bin/core -vvv --servo-file /dev/custom_leds --channel 1
 ```
 
 ## Bluetooth
