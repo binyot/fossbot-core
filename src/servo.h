@@ -16,6 +16,8 @@ struct servo_motion
   time_point_t time;
 };
 
+auto operator==(const servo_motion &, const servo_motion &) -> bool;
+
 auto write_change(std::ostream &os, const servo_motion &motion) -> void;
 
 }// namespace core

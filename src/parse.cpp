@@ -1,12 +1,9 @@
 #include <algorithm>
 #include <string>
 #include <regex>
-#include <cctype>
-#include <iterator>
 #include <tuple>
 
 #include <spdlog/spdlog.h>
-#include <iostream>
 
 #include "defs.h"
 #include "parse.h"
@@ -47,7 +44,7 @@ auto parse_program(const std::string &program) -> std::vector<motion_statement>
       const auto angle = std::stof(angle_base->str());
 
       try {
-        result.push_back({name, angle, time_offset});
+        result.push_back({ name, angle, time_offset });
         spdlog::debug("Parsed {}: {} -> {}", time, name, angle);
       } catch (std::out_of_range &e) {
         throw syntax_error{};
@@ -65,9 +62,9 @@ auto to_motion(const motion_statement &statement, time_point_t start_time) -> se
   const auto angle = std::clamp(statement.angle, angle_range.first, angle_range.second);
   const auto angle_span = angle_range.second - angle_range.first;
   const auto hw_angle_span = hw_angle_range.second - hw_angle_range.first;
-  const auto hw_angle = static_cast<hw_angle_t>(angle/angle_span*hw_angle_span + hw_angle_range.first);
+  const auto hw_angle = static_cast<hw_angle_t>(angle / angle_span * hw_angle_span + hw_angle_range.first);
   const auto time = start_time + statement.time_offset;
-  const auto motion = servo_motion {
+  const auto motion = servo_motion{
     addr,
     hw_angle,
     time,

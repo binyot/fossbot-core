@@ -11,4 +11,9 @@ auto write_change(std::ostream &os, const servo_motion &motion) -> void
   spdlog::debug("Writing {:#04x} to servo {:#04x}", motion.angle, motion.addr);
 }
 
+auto operator==(const servo_motion &l, const servo_motion &r) -> bool
+{
+  return (l.addr == r.addr) && (l.time == r.time) && (l.angle == r.angle);
+}
+
 }// namespace core

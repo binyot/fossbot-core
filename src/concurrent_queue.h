@@ -5,6 +5,7 @@
 #include <mutex>
 #include <condition_variable>
 #include <optional>
+#include <type_traits>
 
 
 namespace nonstd {
@@ -15,12 +16,12 @@ class concurrent_queue
 public:
   template<typename... Args>
   explicit concurrent_queue(Args &&... args)
-    : queue(std::forward<Args...>(args...)), mutex(), cv() {}
+    : queue(std::forward<Args...>(args...)), mutex(), push_cv() {}
 
   ~concurrent_queue() {}
 
   concurrent_queue(const concurrent_queue &other)
-    : queue(other.queue), mutex(), cv() {}
+    : queue(other.queue), mutex(), push_cv() {}
 
   concurrent_queue &operator=(const concurrent_queue &other)
   {
@@ -36,7 +37,7 @@ public:
     auto lock = std::unique_lock(mutex);
     queue.push(val);
     lock.unlock();
-    cv.notify_one();
+    push_cv.notify_one();
   }
 
   auto empty() const -> bool
@@ -54,6 +55,29 @@ public:
     return queue.top();
   }
 
+  auto wait_top() -> const T &
+  {
+    auto lock = std::unique_lock(mutex);
+    while (queue.empty()) {
+      push_cv.wait(lock);
+    }
+    return queue.top();
+  }
+
+  template<typename D = std::chrono::milliseconds>
+  auto wait_new_top_for(D timeout) -> std::optional<T>
+  {
+    auto lock = std::unique_lock(mutex);
+    if (queue.empty()) {
+      push_cv.wait_for(lock, timeout);
+    }
+    if (queue.empty()) {
+      return {};
+    } else {
+      return queue.top();
+    }
+  }
+
   auto pop() -> std::optional<T>
   {
     auto lock = std::unique_lock(mutex);
@@ -69,7 +93,7 @@ public:
   {
     auto lock = std::unique_lock(mutex);
     while (queue.empty()) {
-      cv.wait(lock);
+      push_cv.wait(lock);
     }
     const auto val = queue.top();
     queue.pop();
@@ -77,9 +101,9 @@ public:
   }
 
 private:
-  Q queue; // can be a uniqe_ptr to enable move ctors
+  Q queue;// can be a uniqe_ptr to enable move ctors
   mutable std::mutex mutex;
-  std::condition_variable cv;
+  std::condition_variable push_cv;
 };
 
 }// namespace nonstd

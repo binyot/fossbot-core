@@ -41,7 +41,7 @@ auto listen_to_rfcomm(const stream_handle_t &handle, uint8_t channel) -> void
   listen(sock, queue_size);
   int client;
   socklen_t addr_len;
-  sockaddr_rc addr_rem { 0 };
+  sockaddr_rc addr_rem{ {}, {}, {} };
   while ((client = accept(sock, reinterpret_cast<sockaddr *>(&addr_rem), &addr_len)) != 0) {
     spdlog::info("Accepted client");
     handle_client(client, handle);
