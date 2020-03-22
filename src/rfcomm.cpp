@@ -37,11 +37,12 @@ auto listen_to_rfcomm(const stream_handle_t &handle, uint8_t channel) -> void
     spdlog::error(error);
     throw std::runtime_error(error);
   }
-  const int queue_size{ 0 };
+  const int queue_size{ 10 };
   listen(sock, queue_size);
   int client;
   socklen_t addr_len;
-  while ((client = accept4(sock, reinterpret_cast<sockaddr *>(&addr_local), &addr_len, SOCK_CLOEXEC)) != 0) {
+  sockaddr_rc addr_rem { 0 };
+  while ((client = accept(sock, reinterpret_cast<sockaddr *>(&addr_rem), &addr_len)) != 0) {
     spdlog::info("Accepted client");
     handle_client(client, handle);
     close(client);

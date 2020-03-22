@@ -8,6 +8,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <algorithm>
+#include <cerrno>
 
 #include <spdlog/spdlog.h>
 #include <docopt/docopt.h>
@@ -17,7 +18,7 @@
 #include "parse.h"
 #include "concurrent_queue.h"
 
-#define FOSSBOT_CORE_IN_STDIN 1
+// #define FOSSBOT_CORE_IN_STDIN 1
 
 static constexpr auto USAGE =
   R"(FOSSBot Core.
@@ -81,7 +82,7 @@ auto network_worker([[maybe_unused]] uint8_t channel, Q &queue, std::atomic<bool
   const auto handle = [&done, &push_program](std::istream &is, std::ostream &os) {
     // TODO: make proper protocol
     auto strbuf = std::string{};
-    for (std::string line; std::getline(is, line) or !done.load();) {
+    for (std::string line; std::getline(is, line) and !done.load();) {
       if (line == "push") {
         spdlog::debug("Buffer with size {} pushed", strbuf.size());
         push_program(strbuf);
@@ -92,6 +93,7 @@ auto network_worker([[maybe_unused]] uint8_t channel, Q &queue, std::atomic<bool
         strbuf.append(line + "\n");
       }
     }
+    spdlog::debug("Read error: {}", std::strerror(errno));
   };
 #ifdef FOSSBOT_CORE_IN_STDIN
   core::listen_to_stdin(handle);
