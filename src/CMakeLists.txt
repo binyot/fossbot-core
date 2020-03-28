@@ -1,6 +1,6 @@
 find_package(Threads)
 
-add_executable(core main.cpp servo.h defs.h servo.cpp rfcomm.h rfcomm.cpp parse.h parse.cpp concurrent_queue.h)
+add_executable(core main.cpp servo.h defs.h servo.cpp rfcomm.h rfcomm.cpp parse.h parse.cpp)
 
 target_link_libraries(
   core

@@ -16,4 +16,9 @@ auto operator==(const servo_motion &l, const servo_motion &r) -> bool
   return (l.addr == r.addr) && (l.time == r.time) && (l.angle == r.angle);
 }
 
+auto operator!=(const servo_motion &l, const servo_motion &r) -> bool
+{
+  return !(l == r);
+}
+
 }// namespace core

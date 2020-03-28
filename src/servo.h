@@ -17,6 +17,7 @@ struct servo_motion
 };
 
 auto operator==(const servo_motion &, const servo_motion &) -> bool;
+auto operator!=(const servo_motion &, const servo_motion &) -> bool;
 
 auto write_change(std::ostream &os, const servo_motion &motion) -> void;
 

@@ -14,7 +14,7 @@
 #include "rfcomm.h"
 #include "servo.h"
 #include "parse.h"
-#include "concurrent_queue.h"
+#include "concurrent_priority_queue.h"
 
 #define FOSSBOT_CORE_IN_STDIN 1
 
@@ -44,7 +44,7 @@ auto main(int argc, char **argv) -> int
 
   const auto motion_time_comp = [](const core::servo_motion &l, const core::servo_motion &r) { return l.time > r.time; };
   auto done = std::atomic<bool>{ false };
-  auto motion_queue = nonstd::concurrent_queue<core::servo_motion, std::priority_queue<core::servo_motion, std::vector<core::servo_motion>, decltype(motion_time_comp)>>(motion_time_comp);
+  auto motion_queue = nonstd::concurrent_priority_queue<core::servo_motion, std::vector<core::servo_motion>, decltype(motion_time_comp)>(motion_time_comp);
   auto network_thread = std::thread(network_worker<decltype(motion_queue)>, channel, std::ref(motion_queue), std::ref(done));
 
   auto servo_file = std::ofstream(servo_path, std::ios::out | std::ios::binary);
