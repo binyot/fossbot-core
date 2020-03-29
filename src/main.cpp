@@ -15,6 +15,7 @@
 #include "servo.h"
 #include "parse.h"
 #include "concurrent_priority_queue.h"
+#include "util.h"
 
 #define FOSSBOT_CORE_IN_STDIN 1
 
@@ -66,8 +67,10 @@ auto main(int argc, char **argv) -> int
 template<typename Q>
 auto network_worker([[maybe_unused]] uint8_t channel, Q &queue, std::atomic<bool> &done) -> void
 {
-  const auto push_program = [&queue](const std::string &program) {
-    const auto statements = core::parse_program(program);
+  std::map<std::string, std::vector<core::motion_statement>> command_map;
+
+  const auto push_program = [&queue](const std::vector<core::motion_statement> &statements) {
+    spdlog::debug("Converting {} statements", statements.size());
     auto motions = std::vector<core::servo_motion>{};
     motions.reserve(statements.size());
     const auto time = core::clock_t::now();
@@ -81,21 +84,61 @@ auto network_worker([[maybe_unused]] uint8_t channel, Q &queue, std::atomic<bool
     spdlog::debug("Pushed {} motions", motions.size());
   };
 
-  const auto handle = [&done, &push_program](std::istream &is, std::ostream &os) {
+  const auto handle = [&done, &push_program, &command_map](std::istream &is, std::ostream &os) {
     // TODO: make proper protocol
-    auto strbuf = std::string{};
+    enum class state_t {
+      out,
+      create_command,
+      run_command,
+      command_body,
+    };
+    os << "hello" << std::endl;
+    auto state = state_t::out;
+    auto buffer = std::string{};
+    auto command_name = std::string{};
     for (std::string line; std::getline(is, line) and !done.load();) {
-      if (line == "push") {
-        spdlog::debug("Buffer with size {} pushed", strbuf.size());
-        push_program(strbuf);
-        os << "pushed\n";
-        os.flush();
-        strbuf.clear();
-      } else {
-        strbuf.append(line + "\n");
+      switch (state) {
+      case state_t::out:
+        if (const auto word = nonstd::trim(line); word == "create_command") {
+          state = state_t::create_command;
+        } else if (word == "run_command") {
+          state = state_t::run_command;
+        }
+        break;
+      case state_t::create_command:
+        if (const auto name = nonstd::trim(line); name.length() != 0) {
+          command_name = name;
+          if (const auto it = command_map.find(name); it != end(command_map)) {
+            spdlog::warn("Command {} will be overridden", name);
+          }
+          state = state_t::command_body;
+        } else {
+          spdlog::error("Invalid command name");
+          state = state_t::out;
+        }
+        break;
+      case state_t::run_command:
+        if (const auto name = nonstd::trim(line); command_map.find(name) != end(command_map)) {
+          const auto &statements = command_map[name];
+          spdlog::debug("Pushing program {} with {} statements", name, statements.size());
+          push_program(statements);
+        } else {
+          spdlog::error("Command {} does not exist", name);
+        }
+        state = state_t::out;
+        break;
+      case state_t::command_body:
+        if (nonstd::trim(line) == "end") {
+          command_map[command_name] = core::parse_program(buffer);
+          buffer.clear();
+          state = state_t::out;
+          spdlog::info("Command {} created", command_name);
+        } else {
+          buffer.append(line + "\n");
+        }
+        break;
       }
     }
-    spdlog::debug("Read error: {}", std::strerror(errno));
   };
 #ifdef FOSSBOT_CORE_IN_STDIN
   core::listen_to_stdin(handle);
