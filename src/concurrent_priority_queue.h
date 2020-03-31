@@ -69,7 +69,7 @@ public:
   {
     auto lock = std::unique_lock(mutex);
     while (queue.empty()) {
-      push_cv.wait();
+      push_cv.wait(lock);
     }
     const auto item = queue.top();
     queue.pop();
