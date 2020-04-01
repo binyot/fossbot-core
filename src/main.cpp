@@ -23,30 +23,31 @@ static constexpr auto USAGE =
   R"(FOSSBot Core.
 
    Usage:
-         core [-v | -vv | -vvv] [--servo-file FILE] [--channel CHANNEL]
+         core [-v | -vv | -vvv] [--servo-file FILE] [--init INIT] [--channel CHANNEL]
 
  Options:
          --version            Show version.
          -h --help            Show this screen.
          -v --verbose         Set verbosity level [default: 0]
          --servo-file=FILE    Set servo control character file [default: /dev/custom_leds]
+         --init=INIT          Set file with initial commands path [default: init]
          --channel=CHANNEL    Specify Bluetooth channel [default: 3]
 )";
 
-auto parse_args(int argc, char **argv) -> std::tuple<uint8_t, std::string>;
+auto parse_args(int argc, char **argv) -> std::tuple<uint8_t, std::string, std::string>;
 auto set_verbosity(long level) -> void;
 
 template<typename Q>
-auto network_worker(uint8_t channel, Q &queue, std::atomic<bool> &done) -> void;
+auto network_worker(uint8_t channel, Q &queue, std::atomic<bool> &done, std::string init_file) -> void;
 
 auto main(int argc, char **argv) -> int
 {
-  const auto [channel, servo_path] = parse_args(argc, argv);
+  const auto [channel, servo_path, init_file] = parse_args(argc, argv);
 
   const auto motion_time_comp = [](const core::servo_motion &l, const core::servo_motion &r) { return l.time > r.time; };
   auto done = std::atomic<bool>{ false };
   auto motion_queue = nonstd::concurrent_priority_queue<core::servo_motion, std::vector<core::servo_motion>, decltype(motion_time_comp)>(motion_time_comp);
-  auto network_thread = std::thread(network_worker<decltype(motion_queue)>, channel, std::ref(motion_queue), std::ref(done));
+  auto network_thread = std::thread(network_worker<decltype(motion_queue)>, channel, std::ref(motion_queue), std::ref(done), init_file);
 
   auto servo_file = std::ofstream(servo_path, std::ios::out | std::ios::binary);
   while (!done.load()) {
@@ -65,9 +66,9 @@ auto main(int argc, char **argv) -> int
 }
 
 template<typename Q>
-auto network_worker([[maybe_unused]] uint8_t channel, Q &queue, std::atomic<bool> &done) -> void
+auto network_worker([[maybe_unused]] uint8_t channel, Q &queue, std::atomic<bool> &done, [[maybe_unused]] std::string init_file) -> void
 {
-  std::map<std::string, std::vector<core::motion_statement>> command_map;
+  auto command_map = std::map<std::string, std::vector<core::motion_statement>>{};
 
   const auto push_program = [&queue](const std::vector<core::motion_statement> &statements) {
     spdlog::debug("Converting {} statements", statements.size());
@@ -140,6 +141,13 @@ auto network_worker([[maybe_unused]] uint8_t channel, Q &queue, std::atomic<bool
       }
     }
   };
+
+  // input from file first
+  auto infile = std::ifstream(init_file);
+  auto sink = std::ofstream{};
+  handle(infile, sink);
+
+  // input from external source
 #ifdef FOSSBOT_CORE_IN_STDIN
   core::listen_to_stdin(handle);
 #else
@@ -147,7 +155,7 @@ auto network_worker([[maybe_unused]] uint8_t channel, Q &queue, std::atomic<bool
 #endif
 }
 
-auto parse_args(int argc, char **argv) -> std::tuple<uint8_t, std::string>
+auto parse_args(int argc, char **argv) -> std::tuple<uint8_t, std::string, std::string>
 {
   auto args = docopt::docopt(
     USAGE,
@@ -160,7 +168,9 @@ auto parse_args(int argc, char **argv) -> std::tuple<uint8_t, std::string>
   spdlog::debug("Using channel {}", channel);
   const auto servo_file = args["--servo-file"].asString();
   spdlog::debug("Using servo control file '{}'", servo_file);
-  return std::make_tuple(channel, servo_file);
+  const auto init_file = args["--init"].asString();
+  spdlog::debug("Using init file '{}'", servo_file);
+  return std::make_tuple(channel, servo_file, init_file);
 }
 
 auto set_verbosity(long level) -> void
