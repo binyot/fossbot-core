@@ -17,6 +17,10 @@ struct motion_statement {
   duration_t time_offset;
 };
 
+struct command_statement {
+
+};
+
 // TODO: change to lazy generator
 auto parse_program(const std::string &program) -> std::vector<motion_statement>;
 auto to_motion(const motion_statement &statement, time_point_t start_time) -> servo_motion;

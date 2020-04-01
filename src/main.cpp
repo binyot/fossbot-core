@@ -6,7 +6,6 @@
 #include <thread>
 #include <atomic>
 #include <condition_variable>
-#include <cerrno>
 
 #include <spdlog/spdlog.h>
 #include <docopt/docopt.h>
@@ -17,7 +16,9 @@
 #include "concurrent_priority_queue.h"
 #include "util.h"
 
-//#define FOSSBOT_CORE_IN_STDIN 1
+#include "cyboto/core.h"
+
+#define FOSSBOT_CORE_IN_STDIN 1
 
 static constexpr auto USAGE =
   R"(FOSSBot Core.
@@ -42,14 +43,14 @@ auto network_worker(uint8_t channel, Q &queue, std::atomic<bool> &done, std::str
 
 auto main(int argc, char **argv) -> int
 {
-  const auto [channel, servo_path, init_file] = parse_args(argc, argv);
+  const auto [channel, servo_file_path, init_file] = parse_args(argc, argv);
 
   const auto motion_time_comp = [](const core::servo_motion &l, const core::servo_motion &r) { return l.time > r.time; };
   auto done = std::atomic<bool>{ false };
   auto motion_queue = nonstd::concurrent_priority_queue<core::servo_motion, std::vector<core::servo_motion>, decltype(motion_time_comp)>(motion_time_comp);
   auto network_thread = std::thread(network_worker<decltype(motion_queue)>, channel, std::ref(motion_queue), std::ref(done), init_file);
 
-  auto servo_file = std::ofstream(servo_path, std::ios::out | std::ios::binary);
+  auto servo_file = std::ofstream(servo_file_path, std::ios::out | std::ios::binary);
   while (!done.load()) {
     // Check closest time;
     // wait until closest time or the next queue push;
@@ -68,9 +69,12 @@ auto main(int argc, char **argv) -> int
 template<typename Q>
 auto network_worker([[maybe_unused]] uint8_t channel, Q &queue, std::atomic<bool> &done, [[maybe_unused]] std::string init_file) -> void
 {
+  auto &functionCore = Core::getCore();
+  functionCore.CallFunction("ExampleWithTailAndDelay@10000");
+
   auto command_map = std::map<std::string, std::vector<core::motion_statement>>{};
 
-  const auto push_program = [&queue](const std::vector<core::motion_statement> &statements) {
+  const auto push_program = [&](const std::vector<core::motion_statement> &statements) {
     spdlog::debug("Converting {} statements", statements.size());
     auto motions = std::vector<core::servo_motion>{};
     motions.reserve(statements.size());
@@ -85,7 +89,7 @@ auto network_worker([[maybe_unused]] uint8_t channel, Q &queue, std::atomic<bool
     spdlog::debug("Pushed {} motions", motions.size());
   };
 
-  const auto handle = [&done, &push_program, &command_map](std::istream &is, std::ostream &os) {
+  const auto handle = [&](std::istream &is, [[maybe_unused]] std::ostream &os) {
     // TODO: make proper protocol
     // pleeeease rewrite this
     enum class state_t {
@@ -110,6 +114,7 @@ auto network_worker([[maybe_unused]] uint8_t channel, Q &queue, std::atomic<bool
           }
         }
         break;
+
       case state_t::create_command:
         if (const auto name = nonstd::trim(line); name.length() != 0) {
           command_name = name;
@@ -122,6 +127,7 @@ auto network_worker([[maybe_unused]] uint8_t channel, Q &queue, std::atomic<bool
           state = state_t::out;
         }
         break;
+
       case state_t::run_command:
         if (const auto name = nonstd::trim(line); command_map.find(name) != end(command_map)) {
           const auto &statements = command_map[name];
@@ -132,6 +138,7 @@ auto network_worker([[maybe_unused]] uint8_t channel, Q &queue, std::atomic<bool
         }
         state = state_t::out;
         break;
+
       case state_t::command_body:
         if (nonstd::trim(line) == "end") {
           command_map[command_name] = core::parse_program(buffer);
@@ -170,11 +177,11 @@ auto parse_args(int argc, char **argv) -> std::tuple<uint8_t, std::string, std::
   set_verbosity(args["--verbose"].asLong());
   const auto channel = static_cast<uint8_t>(args["--channel"].asLong());
   spdlog::debug("Using channel {}", channel);
-  const auto servo_file = args["--servo-file"].asString();
-  spdlog::debug("Using servo control file '{}'", servo_file);
+  const auto servo_file_path = args["--servo-file"].asString();
+  spdlog::debug("Using servo control file '{}'", servo_file_path);
   const auto init_file = args["--init"].asString();
-  spdlog::debug("Using init file '{}'", servo_file);
-  return std::make_tuple(channel, servo_file, init_file);
+  spdlog::debug("Using init file '{}'", servo_file_path);
+  return std::make_tuple(channel, servo_file_path, init_file);
 }
 
 auto set_verbosity(long level) -> void
