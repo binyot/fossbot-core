@@ -1,5 +1,7 @@
 # fossbot-core
 
+Timed hardware control for the fossbot project.
+
 ## Building
 
 ```

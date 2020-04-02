@@ -17,7 +17,7 @@
 #include "concurrent_priority_queue.h"
 #include "util.h"
 
-#define FOSSBOT_CORE_IN_STDIN 1
+//#define FOSSBOT_CORE_IN_STDIN 1
 
 static constexpr auto USAGE =
   R"(FOSSBot Core.
@@ -87,13 +87,13 @@ auto network_worker([[maybe_unused]] uint8_t channel, Q &queue, std::atomic<bool
 
   const auto handle = [&done, &push_program, &command_map](std::istream &is, std::ostream &os) {
     // TODO: make proper protocol
+    // pleeeease rewrite this
     enum class state_t {
       out,
       create_command,
       run_command,
       command_body,
     };
-    os << "hello" << std::endl;
     auto state = state_t::out;
     auto buffer = std::string{};
     auto command_name = std::string{};
@@ -104,6 +104,10 @@ auto network_worker([[maybe_unused]] uint8_t channel, Q &queue, std::atomic<bool
           state = state_t::create_command;
         } else if (word == "run_command") {
           state = state_t::run_command;
+        } else if (word == "list_commands") {
+          for (const auto &[name, body] : command_map) {
+            os << name << std::endl;
+          }
         }
         break;
       case state_t::create_command:
