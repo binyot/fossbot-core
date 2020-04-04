@@ -9,4 +9,5 @@ target_link_libraries(
           CONAN_PKG::docopt.cpp
           CONAN_PKG::fmt
           CONAN_PKG::spdlog
+          CONAN_PKG::nlohmann_json
           Threads::Threads)

@@ -10,6 +10,7 @@
 
 #include <spdlog/spdlog.h>
 #include <docopt/docopt.h>
+#include <nlohmann/json.hpp>
 
 #include "rfcomm.h"
 #include "servo.h"
@@ -85,71 +86,72 @@ auto network_worker([[maybe_unused]] uint8_t channel, Q &queue, std::atomic<bool
     spdlog::debug("Pushed {} motions", motions.size());
   };
 
-  const auto handle = [&done, &push_program, &command_map](std::istream &is, std::ostream &os) {
-    // TODO: make proper protocol
-    // pleeeease rewrite this
-    enum class state_t {
-      out,
-      create_command,
-      run_command,
-      command_body,
+  const auto handle = [&](std::istream &is, std::ostream &os) {
+    enum class request_type {
+      list,
+      run,
+      create,
+      null
     };
-    auto state = state_t::out;
-    auto buffer = std::string{};
-    auto command_name = std::string{};
+    const auto request_type_map = std::map<std::string, request_type> {
+      { "list", request_type::list },
+      { "run", request_type::run },
+      { "create", request_type::create },
+    };
+
     for (std::string line; std::getline(is, line) and !done.load();) {
-      switch (state) {
-      case state_t::out:
-        if (const auto word = nonstd::trim(line); word == "create_command") {
-          state = state_t::create_command;
-        } else if (word == "run_command") {
-          state = state_t::run_command;
-        } else if (word == "list_commands") {
-          for (const auto &[name, body] : command_map) {
-            os << name << std::endl;
+      try {
+        const auto request = nlohmann::json::parse(line);
+        const std::string type_name = request.at("type");
+        const auto type = nonstd::at_or(request_type_map, type_name, request_type::null);
+        spdlog::info("Received {} request", type_name);
+        switch (type) {
+        case request_type::list: {
+          auto names = std::vector<std::string_view>{};
+          names.reserve(command_map.size());
+          for (const auto &kv : command_map) {
+            names.push_back(kv.first);
           }
+          auto response = nlohmann::json{
+            {"type", type_name},
+            {"names", names},
+          };
+          spdlog::debug("Sending {}", response.dump());
+          os << response << std::endl;
+          break;
         }
-        break;
-      case state_t::create_command:
-        if (const auto name = nonstd::trim(line); name.length() != 0) {
-          command_name = name;
-          if (const auto it = command_map.find(name); it != end(command_map)) {
-            spdlog::warn("Command {} will be overridden", name);
+        case request_type::create: {
+          const std::string name = request.at("name");
+          const std::string body = request.at("body");
+          const auto statements = core::parse_program(body);
+          command_map[name] = statements;
+          break;
+        }
+        case request_type::run: {
+          const std::string name = request.at("name");
+          if (const auto kv = command_map.find(name); kv != end(command_map)) {
+            const auto statements = command_map.at(name);
+            push_program(statements);
+          } else {
+            spdlog::error("Unknown command \"{}\"", name);
           }
-          state = state_t::command_body;
-        } else {
-          spdlog::error("Invalid command name");
-          state = state_t::out;
+          break;
         }
-        break;
-      case state_t::run_command:
-        if (const auto name = nonstd::trim(line); command_map.find(name) != end(command_map)) {
-          const auto &statements = command_map[name];
-          spdlog::debug("Pushing program {} with {} statements", name, statements.size());
-          push_program(statements);
-        } else {
-          spdlog::error("Command {} does not exist", name);
+        default:
+          spdlog::error("Unknown request type \"{}\" received", type_name);
+          break;
         }
-        state = state_t::out;
-        break;
-      case state_t::command_body:
-        if (nonstd::trim(line) == "end") {
-          command_map[command_name] = core::parse_program(buffer);
-          buffer.clear();
-          state = state_t::out;
-          spdlog::info("Command {} created", command_name);
-        } else {
-          buffer.append(line + "\n");
-        }
-        break;
-      }
+      } catch (...) {
+        spdlog::error("Ill-formed request received");
+      } //hmmm
+      spdlog::debug("Request: {}", line);
     }
   };
 
   // input from file first
-  auto infile = std::ifstream(init_file);
-  auto sink = std::ofstream{};
-  handle(infile, sink);
+//  auto infile = std::ifstream(init_file);
+//  auto sink = std::ofstream{};
+//  handle(infile, sink);
 
   // input from external source
 #ifdef FOSSBOT_CORE_IN_STDIN
@@ -173,7 +175,7 @@ auto parse_args(int argc, char **argv) -> std::tuple<uint8_t, std::string, std::
   const auto servo_file = args["--servo-file"].asString();
   spdlog::debug("Using servo control file '{}'", servo_file);
   const auto init_file = args["--init"].asString();
-  spdlog::debug("Using init file '{}'", servo_file);
+  spdlog::debug("Using init file '{}'", init_file);
   return std::make_tuple(channel, servo_file, init_file);
 }
 
