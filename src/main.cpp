@@ -105,17 +105,25 @@ auto network_worker([[maybe_unused]] uint8_t channel, bool use_tcp, Q &queue, st
         const auto request = nlohmann::json::parse(line);
         const std::string type_name = request.at("type");
         const auto type = nonstd::at_or(request_type_map, type_name, request_type::null);
-        spdlog::info("Received {} request", type_name);
+        spdlog::debug("Received {} request", type_name);
         switch (type) {
         case request_type::list: {
+          spdlog::info("Sending command list");
           auto names = std::vector<std::string_view>{};
           names.reserve(command_map.size());
           for (const auto &kv : command_map) {
             names.push_back(kv.first);
           }
+          auto commands_json = nlohmann::json::array();
+          for (const auto &[name, statements]: command_map) {
+            if (statements.size() == 0) continue;
+            const auto body = core::serialize_program(statements);
+            spdlog::debug("Serialized program {}:\n{}", name, body);
+            commands_json.push_back({ { "name", name }, { "body", body } });
+          }
           auto response = nlohmann::json{
             { "type", type_name },
-            { "names", names },
+            { "commands", commands_json }
           };
           spdlog::debug("Sending {}", response.dump());
           os << response << std::endl;
@@ -124,6 +132,7 @@ auto network_worker([[maybe_unused]] uint8_t channel, bool use_tcp, Q &queue, st
         case request_type::create: {
           const std::string name = request.at("name");
           const std::string body = request.at("body");
+          spdlog::info("Creating command {}", name);
           const auto statements = core::parse_program(body);
           command_map[name] = statements;
           break;
@@ -131,6 +140,7 @@ auto network_worker([[maybe_unused]] uint8_t channel, bool use_tcp, Q &queue, st
         case request_type::run: {
           const std::string name = request.at("name");
           if (const auto kv = command_map.find(name); kv != end(command_map)) {
+            spdlog::info("Running command {}", name);
             const auto statements = command_map.at(name);
             push_program(statements);
           } else {
@@ -142,8 +152,8 @@ auto network_worker([[maybe_unused]] uint8_t channel, bool use_tcp, Q &queue, st
           spdlog::error("Unknown request type \"{}\" received", type_name);
           break;
         }
-      } catch (...) {
-        spdlog::error("Ill-formed request received");
+      } catch (const std::exception &e) {
+        spdlog::error("Ill-formed request received:\n{}", e.what());
       }//hmmm
       spdlog::debug("Request: {}", line);
     }

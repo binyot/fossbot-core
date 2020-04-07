@@ -54,6 +54,7 @@ auto parse_program(const std::string &program) -> std::vector<motion_statement>
 
   return result;
 }
+
 auto to_motion(const motion_statement &statement, time_point_t start_time) -> servo_motion
 {
   const auto params = servo_param_map.at(statement.name);
