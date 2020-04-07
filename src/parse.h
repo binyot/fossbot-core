@@ -6,6 +6,7 @@
 
 #include "defs.h"
 #include "servo.h"
+#include "network.h"
 
 namespace core {
 

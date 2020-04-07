@@ -94,7 +94,7 @@ auto network_worker([[maybe_unused]] uint8_t channel, bool use_tcp, Q &queue, st
       create,
       null
     };
-    const auto request_type_map = std::map<std::string, request_type> {
+    const auto request_type_map = std::map<std::string, request_type>{
       { "list", request_type::list },
       { "run", request_type::run },
       { "create", request_type::create },
@@ -114,8 +114,8 @@ auto network_worker([[maybe_unused]] uint8_t channel, bool use_tcp, Q &queue, st
             names.push_back(kv.first);
           }
           auto response = nlohmann::json{
-            {"type", type_name},
-            {"names", names},
+            { "type", type_name },
+            { "names", names },
           };
           spdlog::debug("Sending {}", response.dump());
           os << response << std::endl;
@@ -144,16 +144,74 @@ auto network_worker([[maybe_unused]] uint8_t channel, bool use_tcp, Q &queue, st
         }
       } catch (...) {
         spdlog::error("Ill-formed request received");
-      } //hmmm
+      }//hmmm
       spdlog::debug("Request: {}", line);
     }
   };
 
-  // input from file first
-//  auto infile = std::ifstream(init_file);
-//  auto sink = std::ofstream{};
-//  handle(infile, sink);
+  // TODO: make proper init file parsing
+  const auto init_handle = [&done, &push_program, &command_map](std::istream &is, [[maybe_unused]]std::ostream &os) {
+    enum class state_t {
+      out,
+      create_command,
+      run_command,
+      command_body,
+    };
+    auto state = state_t::out;
+    auto buffer = std::string{};
+    auto command_name = std::string{};
+    for (std::string line; std::getline(is, line) and !done.load();) {
+      switch (state) {
+      case state_t::out:
+        if (const auto word = nonstd::trim(line); word == "create_command") {
+          state = state_t::create_command;
+        } else if (word == "run_command") {
+          state = state_t::run_command;
+        }
+        break;
+      case state_t::create_command:
+        if (const auto name = nonstd::trim(line); name.length() != 0) {
+          command_name = name;
+          if (const auto it = command_map.find(name); it != end(command_map)) {
+            spdlog::warn("Command {} will be overridden", name);
+          }
+          state = state_t::command_body;
+        } else {
+          spdlog::error("Invalid command name \"{}\"", name);
+          state = state_t::out;
+        }
+        break;
+      case state_t::run_command:
+        if (const auto name = nonstd::trim(line); command_map.find(name) != end(command_map)) {
+          const auto &statements = command_map[name];
+          spdlog::debug("Pushing program {} with {} statements", name, statements.size());
+          push_program(statements);
+        } else {
+          spdlog::error("Command {} does not exist", name);
+        }
+        state = state_t::out;
+        break;
+      case state_t::command_body:
+        if (nonstd::trim(line) == "end") {
+          command_map[command_name] = core::parse_program(buffer);
+          buffer.clear();
+          state = state_t::out;
+          spdlog::info("Command {} created", command_name);
+        } else {
+          buffer.append(line + "\n");
+        }
+        break;
+      }
+    }
+  };
 
+  // input from file first
+  auto infile = std::ifstream(init_file);
+  auto sink = std::ofstream{};
+  spdlog::info("Reading init file");
+  init_handle(infile, sink);
+
+  spdlog::info("Listening...");
   // input from external source
 #ifdef FOSSBOT_CORE_IN_STDIN
   core::listen_to_stdin(handle);
@@ -181,8 +239,7 @@ auto parse_args(int argc, char **argv) -> std::tuple<int, bool, std::string, std
   spdlog::debug("Using {} with {} {}",
     use_tcp ? "TCP/IP" : "Bluetooth RFCOMM",
     use_tcp ? "port" : "channel",
-    channel
-    );
+    channel);
   const auto servo_file = args["--servo-file"].asString();
   spdlog::debug("Using servo control file '{}'", servo_file);
   const auto init_file = args["--init"].asString();

@@ -5,9 +5,9 @@
 #include <iostream>
 #include <string>
 
-namespace core {
+#include "defs.h"
 
-using stream_handle_t = std::function<void(std::istream &is, std::ostream &os)>;
+namespace core {
 
 auto listen_to_rfcomm(const stream_handle_t &handle, int channel) -> void;
 

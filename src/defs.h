@@ -12,6 +12,8 @@ using duration_t = std::chrono::milliseconds;
 using addr_t = uint8_t;
 using hw_angle_t = uint8_t;
 
+using stream_handle_t = std::function<void(std::istream &is, std::ostream &os)>;
+
 template<typename T>
 using range_t = std::pair<T, T>;
 
