@@ -3,6 +3,10 @@
 
 #include <algorithm>
 #include <string>
+#include <cerrno>
+#include <exception>
+
+#include <spdlog/spdlog.h>
 
 namespace nonstd {
 
