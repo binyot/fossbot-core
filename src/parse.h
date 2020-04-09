@@ -13,16 +13,38 @@ namespace core {
 
 struct syntax_error : public std::exception {};
 
+/**
+ * A single time point movement of a specific servo.
+ */
 struct motion_statement {
   std::string name;
   float angle;
   duration_t time_offset;
 };
 
-// TODO: change to lazy generator
+/**
+ * Convert program string into a series of motion statements.
+ * @param program
+ * @return
+ */
 auto parse_program(const std::string &program) -> std::vector<motion_statement>;
+
+/**
+ * Convert motion statement into a servo motion,
+ * mapping name to address, angle to hardware angle
+ * and starting time to actual time point.
+ * @param statement
+ * @param start_time Starting time to which time_offset is added
+ * @return
+ */
 auto to_motion(const motion_statement &statement, time_point_t start_time) -> servo_motion;
 
+/**
+ * Serialize statement sequence into a human-readable and parseable program.
+ * @tparam C Random-access container
+ * @param statements
+ * @return
+ */
 template<typename C>
 auto serialize_program(const C &statements) -> std::string
 {

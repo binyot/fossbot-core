@@ -13,6 +13,13 @@ namespace nonstd {
 template<class... Ts> struct overload : Ts... { using Ts::operator()...; };
 template<class... Ts> overload(Ts...) -> overload<Ts...>;
 
+
+/**
+ * Remove all whitespace at the
+ * beggining and the end of a string
+ * @param s
+ * @return
+ */
 inline std::string trim(const std::string &s)
 {
   const auto isspace = [](int c){return std::isspace(c);};

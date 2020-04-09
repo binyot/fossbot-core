@@ -25,6 +25,9 @@ struct servo_param
   range_t<float> angle_range;
 };
 
+/**
+ * Global servo configuration
+ */
 static const std::map<std::string, servo_param> servo_param_map{
   { "neck",
     { 0x00, { 0.f, 180.f } } },
