@@ -2,6 +2,8 @@
 
 Timed hardware control for the fossbot project.
 
+[doxygen docs](https://binyot.github.io/fossbot-core/md_README.html)
+
 ## Building
 
 ```
